@@ -33,5 +33,6 @@ export const sfx = {
   served: () => { tone(880, 0.08, 'sine'); setTimeout(() => tone(1175, 0.08, 'sine'), 80); setTimeout(() => tone(1568, 0.14, 'sine'), 160); },
   bell: () => tone(1320, 0.4, 'sine', 0.06),
   left: () => tone(330, 0.25, 'triangle', 0.06, -120),
+  coins: () => { tone(1400, 0.05, 'square', 0.03); setTimeout(() => tone(1800, 0.08, 'square', 0.03), 50); },
   trash: () => tone(260, 0.12, 'triangle', 0.05, -60),
 };

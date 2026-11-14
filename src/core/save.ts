@@ -16,8 +16,10 @@ const KEY = 'cooking-maestro/save/v1';
 function migrate(raw: unknown): SaveData {
   const base = newSave();
   if (!raw || typeof raw !== 'object') return base;
-  const r = raw as Partial<SaveData>;
-  return { ...base, ...r, look: { ...base.look, ...(r.look ?? {}) }, upgrades: { ...(r.upgrades ?? {}) }, bestStars: { ...(r.bestStars ?? {}) }, version: 1 };
+  const r = raw as Partial<SaveData> & { version?: number };
+  // Les sauvegardes v1 (prototype « par jours ») repartent au niveau 1 en gardant pièces et apparence.
+  if (r.version !== 2) return { ...base, coins: r.coins ?? 0, look: { ...base.look, ...(r.look ?? {}) } };
+  return { ...base, ...r, look: { ...base.look, ...(r.look ?? {}) }, upgrades: { ...(r.upgrades ?? {}) }, bestStars: { ...(r.bestStars ?? {}) }, version: 2 };
 }
 
 export class LocalSaveService implements SaveService {

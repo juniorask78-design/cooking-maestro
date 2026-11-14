@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { KitchenSim } from '../src/core/sim';
-import { newSave, serviceParams, starsFor, buyStage, applyServiceResult } from '../src/core/progress';
+import { newSave, serviceParams, starsFor, buyStage, applyServiceResult, levelGoal, needsExpansion, playableLevel } from '../src/core/progress';
 import { canAddToPlate, dishOf, recipesForStage, ingredientsForStage } from '../src/core/recipes';
 import { BALANCE } from '../src/config/content';
 
@@ -53,12 +53,17 @@ describe('service au toucher', () => {
     expect(sim.dishOn(0)?.id).toBe('taco');
 
     const c = sim.customers[0];
-    c.order = 'taco';
+    c.order = 'taco'; c.drink = null;
     while (c.phase !== 'waiting') run(0.1);
     tap.plate(0);
     expect(c.phase).toBe('eating');
-    expect(sim.coins).toBeGreaterThanOrEqual(15);
     expect(sim.plates[0].parts).toEqual([]);
+    // Les pièces restent sur la table jusqu'à ce qu'on les ramasse.
+    expect(sim.coins).toBe(0);
+    expect(sim.seats[c.seat].coins).toBeGreaterThanOrEqual(15);
+    sim.dispatch({ type: 'tapSeat', player: P, seat: c.seat });
+    expect(sim.coins).toBeGreaterThanOrEqual(15);
+    expect(sim.seats[c.seat].coins).toBe(0);
   });
 
   it('un ingrédient pas encore prêt reste sur son appareil', () => {
@@ -106,23 +111,78 @@ describe('service au toucher', () => {
     expect(sim.drainEvents().some((e) => e.type === 'nope')).toBe(true);
   });
 
-  it('le service se termine', () => {
+  it('commande plat + boisson : il faut servir les deux', () => {
+    const { sim, run, tap } = setup();
+    const c = sim.customers[0] ?? (run(3), sim.customers[0]);
+    c.order = 'guacamole'; c.drink = 'limonade';
+    while (c.phase !== 'waiting') run(0.1);
+    sim.plates[0].parts = ['avocat:coupe', 'tomate:coupe'];
+    tap.plate(0);
+    expect(c.phase).toBe('waiting');
+    expect(c.servedDish).toBe(true);
+    tap.slot('bar-limonade'); // on remplit un verre
+    run(BALANCE.pourSeconds + 0.1);
+    tap.slot('bar-limonade'); // on le sert
+    expect(c.phase).toBe('eating');
+  });
+
+  it('un plat cuit sans assiette libre part au réchaud et ne brûle plus', () => {
+    const { sim, run, tap } = setup();
+    sim.plates.forEach((p) => { p.parts = ['avocat:coupe']; });
+    tap.bin('boeuf');
+    run(BALANCE.cookSeconds + 0.1);
+    tap.slot('feu-0');
+    expect(sim.slot('rechaud-0')!.item).toMatchObject({ id: 'boeuf', state: 'cuit' });
+    run(BALANCE.burnSeconds * 3);
+    expect(sim.slot('rechaud-0')!.item).toMatchObject({ state: 'cuit' });
+  });
+
+  it('enchaîner les services fait monter le combo', () => {
+    const { sim, run, tap } = setup();
+    run(BALANCE.firstCustomerDelay + BALANCE.walkSeconds + 0.1);
+    sim.customers.forEach((c) => { c.phase = 'waiting'; c.order = 'guacamole'; c.drink = null; });
+    sim.customers.push({ ...sim.customers[0], id: 99, seat: (sim.customers[0].seat + 1) % 3 });
+    sim.plates[0].parts = ['avocat:coupe', 'tomate:coupe'];
+    sim.plates[1].parts = ['avocat:coupe', 'tomate:coupe'];
+    tap.plate(0); tap.plate(1);
+    expect(sim.combo).toBe(2);
+  });
+
+  it('le service se termine et ramasse les pièces oubliées', () => {
     const { sim, run } = setup();
+    sim.seats[0].coins = 12;
     run(BALANCE.serviceSeconds + 40);
     expect(sim.ended).toBe(true);
+    expect(sim.coins).toBeGreaterThanOrEqual(12);
   });
 });
 
-describe('progression', () => {
-  it('étoiles et agrandissement', () => {
+describe('progression par niveaux', () => {
+  it('étoiles', () => {
     expect(starsFor(0, 90)).toBe(0);
     expect(starsFor(90, 90)).toBe(1);
     expect(starsFor(200, 90)).toBe(3);
+  });
+  it('on passe au niveau suivant seulement si l’objectif est rempli', () => {
     const save = newSave();
-    applyServiceResult(save, { coins: 250, served: 14, left: 0, stars: 3 });
-    expect(save.day).toBe(2);
+    applyServiceResult(save, { level: 1, coins: 40, served: 3, left: 2, stars: 0, success: false });
+    expect(save.level).toBe(1);
+    expect(save.coins).toBe(40);
+    applyServiceResult(save, { level: 1, coins: 120, served: 9, left: 0, stars: 1, success: true });
+    expect(save.level).toBe(2);
+  });
+  it('les objectifs varient et l’agrandissement demande d’avoir fini les 5 niveaux', () => {
+    expect(levelGoal(1).type).toBe('pieces');
+    expect(levelGoal(2).type).toBe('clients');
+    expect(levelGoal(4).type).toBe('parfait');
+    const save = newSave();
+    save.coins = 1000;
+    expect(buyStage(save)).toBe(false);
+    save.level = 6;
+    expect(needsExpansion(save)).toBe(true);
+    expect(playableLevel(save)).toBe(5);
     expect(buyStage(save)).toBe(true);
     expect(save.stage).toBe(1);
-    expect(save.coins).toBe(30);
+    expect(serviceParams(save).level).toBe(6);
   });
 });

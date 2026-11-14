@@ -2,26 +2,35 @@
  * SIMULATION D'UN SERVICE — logique pure, sans Phaser.
  *
  * Tout se joue au toucher : on touche un bac d'ingrédient, il part seul vers la planche ou le feu ;
- * ce qui est prêt part sur une assiette quand on le touche ; on touche une assiette complète pour servir.
+ * ce qui est prêt part sur une assiette (ou au réchaud) quand on le touche ; on touche une assiette
+ * complète pour servir. Les boissons se remplissent à la machine. Les clients laissent leurs pièces
+ * sur la table : on les touche pour les ramasser et libérer la place.
  *
  * Toute action d'un joueur passe par `dispatch(action)` et le temps avance avec `tick(dt)`.
  * C'est ce qui permettra la coop en ligne : l'hôte fait tourner la simulation,
  * les autres joueurs envoient leurs actions et reçoivent l'état (voir docs/ARCHITECTURE.md).
  */
-import { BALANCE, BIN_ORDER, INGREDIENTS, READY_STATE, type IngredientState, type Part, type RecipeDef } from '../config/content';
+import { BALANCE, BIN_ORDER, DRINKS, INGREDIENTS, READY_STATE, type IngredientState, type Part, type RecipeDef } from '../config/content';
 import { canAddToPlate, dishOf, ingredientsForStage, partOf, recipesForStage } from './recipes';
 import type { ServiceParams } from './progress';
 
 export interface Ingredient { id: string; state: IngredientState }
 
-export type ApplianceKind = 'planche' | 'feu';
+export type ApplianceKind = 'planche' | 'feu' | 'rechaud' | 'bar';
 
 export interface SlotState {
   id: string; // ex. "feu-0"
   kind: ApplianceKind;
   item: Ingredient | null;
-  /** Secondes de découpe ou de cuisson accumulées. */
+  /** Secondes de découpe, de cuisson ou de remplissage accumulées. */
   progress: number;
+  /** Boisson servie par une machine du bar. */
+  drink?: string;
+}
+
+export interface SeatState {
+  /** Pièces laissées sur la table, à ramasser d'un toucher. */
+  coins: number;
 }
 
 export interface PlateState { parts: Part[] }
@@ -33,7 +42,13 @@ export type CustomerPhase = 'arriving' | 'waiting' | 'eating' | 'leaving';
 export interface CustomerState {
   id: number;
   seat: number;
+  /** Plat commandé, et boisson éventuelle. */
   order: string;
+  drink: string | null;
+  servedDish: boolean;
+  servedDrink: boolean;
+  /** Client pressé : moins patient, plus généreux. */
+  hurried: boolean;
   phase: CustomerPhase;
   t: number;
   patience: number;
@@ -50,7 +65,9 @@ export type SimEvent =
   | { type: 'nope'; at: Ref; reason: string }
   | { type: 'trash'; at: Ref }
   | { type: 'chopDone' | 'cookDone' | 'burnt'; at: Ref }
-  | { type: 'served'; customer: number; plate: number; seat: number; coins: number; tip: number; player: string }
+  | { type: 'served'; customer: number; from: Ref; seat: number; item: string; complete: boolean; player: string }
+  | { type: 'paid'; customer: number; seat: number; coins: number; tip: number; combo: number }
+  | { type: 'collected'; seat: number; coins: number; player: string }
   | { type: 'select'; plate: number | null; player: string }
   | { type: 'arrived'; customer: number }
   | { type: 'left'; customer: number }
@@ -61,6 +78,7 @@ export type Action =
   | { type: 'tapBin'; player: string; ingredient: string }
   | { type: 'tapSlot'; player: string; slot: string }
   | { type: 'tapPlate'; player: string; plate: number }
+  | { type: 'tapSeat'; player: string; seat: number }
   | { type: 'clearPlate'; player: string; plate: number };
 
 export class KitchenSim {
@@ -68,6 +86,7 @@ export class KitchenSim {
   readonly plates: PlateState[] = [];
   readonly players = new Map<string, PlayerState>();
   readonly customers: CustomerState[] = [];
+  readonly seats: SeatState[] = [];
   readonly recipes: RecipeDef[];
   readonly bins: string[];
   readonly events: SimEvent[] = [];
@@ -76,6 +95,8 @@ export class KitchenSim {
   served = 0;
   left = 0;
   ended = false;
+  combo = 0;
+  private lastServeAt = -999;
   private nextSpawn: number;
   private nextCustomerId = 1;
   private closingAnnounced = false;
@@ -86,7 +107,10 @@ export class KitchenSim {
     this.bins = BIN_ORDER.filter((id) => available.includes(id));
     for (let i = 0; i < params.stoves; i++) this.slots.push({ id: `feu-${i}`, kind: 'feu', item: null, progress: 0 });
     for (let i = 0; i < params.boards; i++) this.slots.push({ id: `planche-${i}`, kind: 'planche', item: null, progress: 0 });
+    for (let i = 0; i < params.rechaud; i++) this.slots.push({ id: `rechaud-${i}`, kind: 'rechaud', item: null, progress: 0 });
+    for (const drink of params.drinks) this.slots.push({ id: `bar-${drink}`, kind: 'bar', item: null, progress: 0, drink });
     for (let i = 0; i < params.plates; i++) this.plates.push({ parts: [] });
+    for (let i = 0; i < params.seats; i++) this.seats.push({ coins: 0 });
     this.nextSpawn = BALANCE.firstCustomerDelay;
   }
 
@@ -99,6 +123,11 @@ export class KitchenSim {
   slot(id: string) { return this.slots.find((s) => s.id === id); }
 
   get timeLeft() { return Math.max(0, BALANCE.serviceSeconds - this.time); }
+
+  /** Part restante (0 à 1) de la fenêtre de combo. */
+  get comboRemaining() {
+    return this.combo > 0 ? Math.max(0, 1 - (this.time - this.lastServeAt) / BALANCE.comboWindow) : 0;
+  }
 
   /** Plat complet que forme une assiette, s'il y en a un. */
   dishOn(plate: number): RecipeDef | undefined {
@@ -114,6 +143,7 @@ export class KitchenSim {
       case 'tapBin': return this.tapBin(p, a.ingredient);
       case 'tapSlot': return this.tapSlot(p, a.slot);
       case 'tapPlate': return this.tapPlate(p, a.plate);
+      case 'tapSeat': return this.collect(p, a.seat);
       case 'clearPlate': {
         const plate = this.plates[a.plate];
         if (!plate || !plate.parts.length) return;
@@ -142,15 +172,43 @@ export class KitchenSim {
 
   private tapSlot(p: PlayerState, slotId: string) {
     const s = this.slot(slotId);
-    if (!s || !s.item) return;
+    if (!s) return;
+    const at = `slot:${s.id}`;
+    if (s.kind === 'bar') {
+      if (!s.item) { s.item = { id: s.drink!, state: 'brut' }; s.progress = 0; this.events.push({ type: 'sent', from: at, to: at, item: { ...s.item }, player: p.id }); return; }
+      if (s.item.state !== 'cuit') return this.nope(at, 'Le verre se remplit…');
+      const c = this.bestCustomer((cu) => cu.drink === s.drink && !cu.servedDrink);
+      if (!c) return this.nope(at, 'Personne n’a commandé cette boisson');
+      s.item = null; s.progress = 0;
+      return this.serveItem(p, c, at, s.drink!, 'drink');
+    }
+    if (!s.item) return;
     if (s.item.state === 'brule') {
       s.item = null; s.progress = 0;
-      this.events.push({ type: 'trash', at: `slot:${s.id}` });
+      this.events.push({ type: 'trash', at });
       return;
     }
-    const ready = READY_STATE[INGREDIENTS[s.item.id].process];
-    if (s.item.state !== ready) return this.nope(`slot:${s.id}`, 'Pas encore prêt');
-    if (this.toPlate(p, s.item, `slot:${s.id}`)) { s.item = null; s.progress = 0; }
+    if (s.kind !== 'rechaud') {
+      const ready = READY_STATE[INGREDIENTS[s.item.id].process];
+      if (s.item.state !== ready) return this.nope(at, 'Pas encore prêt');
+    }
+    const item = s.item;
+    const plate = this.pickPlate(p, partOf(item.id, item.state));
+    if (plate >= 0) {
+      this.plates[plate].parts.push(partOf(item.id, item.state));
+      this.events.push({ type: 'sent', from: at, to: `plate:${plate}`, item: { ...item }, player: p.id });
+      s.item = null; s.progress = 0;
+      return;
+    }
+    // Aucune assiette ne convient : on garde le plat au chaud s'il reste de la place au réchaud.
+    const warm = s.kind !== 'rechaud' ? this.slots.find((x) => x.kind === 'rechaud' && !x.item) : undefined;
+    if (warm) {
+      warm.item = item; warm.progress = 0;
+      this.events.push({ type: 'sent', from: at, to: `slot:${warm.id}`, item: { ...item }, player: p.id });
+      s.item = null; s.progress = 0;
+      return;
+    }
+    this.nope(at, 'Aucune assiette ne convient');
   }
 
   /** Pose un ingrédient prêt sur la meilleure assiette. Renvoie false si aucune ne convient. */
@@ -167,7 +225,7 @@ export class KitchenSim {
    * sinon une assiette déjà commencée qui mène à une commande en attente, sinon une assiette vide.
    */
   pickPlate(p: PlayerState, part: Part): number {
-    const waitingOrders = this.customers.filter((c) => c.phase === 'waiting' || c.phase === 'arriving').map((c) => c.order);
+    const waitingOrders = this.customers.filter((c) => (c.phase === 'waiting' || c.phase === 'arriving') && !c.servedDish).map((c) => c.order);
     const wanted = this.recipes.filter((r) => waitingOrders.includes(r.id));
     let best = -1;
     let bestScore = -1;
@@ -192,16 +250,45 @@ export class KitchenSim {
       this.events.push({ type: 'select', plate: p.selectedPlate, player: p.id });
       return;
     }
-    const candidates = this.customers.filter((c) => c.phase === 'waiting' && c.order === dish.id).sort((a, b) => a.patience - b.patience);
-    const c = candidates[0];
+    const c = this.bestCustomer((cu) => cu.order === dish.id && !cu.servedDish);
     if (!c) return this.nope(`plate:${i}`, 'Personne n’a commandé ce plat');
-    const tip = Math.round(dish.price * BALANCE.tipMax * (c.patience / c.patienceMax));
-    this.coins += dish.price + tip;
-    this.served += 1;
     plate.parts = [];
     if (p.selectedPlate === i) p.selectedPlate = null;
+    this.serveItem(p, c, `plate:${i}`, dish.id, 'dish');
+  }
+
+  /** Client en attente qui correspond, le moins patient d'abord. */
+  private bestCustomer(match: (c: CustomerState) => boolean): CustomerState | undefined {
+    return this.customers.filter((c) => c.phase === 'waiting' && match(c)).sort((a, b) => a.patience - b.patience)[0];
+  }
+
+  private serveItem(p: PlayerState, c: CustomerState, from: Ref, item: string, kind: 'dish' | 'drink') {
+    if (kind === 'dish') c.servedDish = true; else c.servedDrink = true;
+    const complete = c.servedDish && (!c.drink || c.servedDrink);
+    this.events.push({ type: 'served', customer: c.id, from, seat: c.seat, item, complete, player: p.id });
+    if (!complete) {
+      // Une partie de la commande arrive : le client reprend patience.
+      c.patience = Math.min(c.patienceMax, c.patience + c.patienceMax * BALANCE.partialPatienceBonus);
+      return;
+    }
+    // Commande complète : combo, pourboire, et pièces laissées sur la table.
+    this.combo = this.time - this.lastServeAt <= BALANCE.comboWindow ? Math.min(BALANCE.comboMax, this.combo + 1) : 1;
+    this.lastServeAt = this.time;
+    const price = (this.recipes.find((r) => r.id === c.order)?.price ?? 0) + (c.drink ? DRINKS.find((d) => d.id === c.drink)?.price ?? 0 : 0);
+    const tipRate = BALANCE.tipMax * (c.patience / c.patienceMax) * (c.hurried ? 1.5 : 1) + 0.1 * (this.combo - 1) + this.params.tipBonus;
+    const tip = Math.round(price * tipRate);
+    this.seats[c.seat].coins += price + tip;
+    this.served += 1;
     c.phase = 'eating'; c.t = 0; c.happy = true;
-    this.events.push({ type: 'served', customer: c.id, plate: i, seat: c.seat, coins: dish.price, tip, player: p.id });
+    this.events.push({ type: 'paid', customer: c.id, seat: c.seat, coins: price, tip, combo: this.combo });
+  }
+
+  private collect(p: PlayerState, seat: number) {
+    const s = this.seats[seat];
+    if (!s || !s.coins) return;
+    this.coins += s.coins;
+    this.events.push({ type: 'collected', seat, coins: s.coins, player: p.id });
+    s.coins = 0;
   }
 
   // ───────────────────────── Temps ─────────────────────────
@@ -220,6 +307,8 @@ export class KitchenSim {
     }
     const someoneWaiting = this.customers.some((c) => c.phase === 'waiting' || c.phase === 'arriving');
     if ((this.time >= BALANCE.serviceSeconds && !someoneWaiting) || this.time >= BALANCE.serviceSeconds + 30) {
+      // Fin du service : on ramasse automatiquement les pièces oubliées.
+      this.seats.forEach((st) => { this.coins += st.coins; st.coins = 0; });
       this.ended = true;
       this.events.push({ type: 'ended' });
     }
@@ -236,6 +325,9 @@ export class KitchenSim {
       } else if (s.kind === 'feu' && it.state === 'brut' && s.progress >= this.params.cookSeconds) {
         it.state = 'cuit'; s.progress = 0;
         this.events.push({ type: 'cookDone', at: `slot:${s.id}` });
+      } else if (s.kind === 'bar' && it.state === 'brut' && s.progress >= this.params.pourSeconds) {
+        it.state = 'cuit'; s.progress = 0;
+        this.events.push({ type: 'cookDone', at: `slot:${s.id}` });
       } else if (s.kind === 'feu' && it.state === 'cuit' && s.progress >= this.params.burnSeconds) {
         it.state = 'brule'; s.progress = 0;
         this.events.push({ type: 'burnt', at: `slot:${s.id}` });
@@ -245,17 +337,21 @@ export class KitchenSim {
 
   private spawnCustomer() {
     const busy = new Set(this.customers.map((c) => c.seat));
-    const free = [...Array(this.params.seats).keys()].filter((i) => !busy.has(i));
+    // Une place reste prise tant que les pièces n'ont pas été ramassées.
+    const free = [...Array(this.params.seats).keys()].filter((i) => !busy.has(i) && !this.seats[i].coins);
     if (!free.length) return;
     const seat = free[Math.floor(this.rng() * free.length)];
     const total = this.recipes.reduce((a, r) => a + r.weight, 0);
     let roll = this.rng() * total;
     const order = this.recipes.find((r) => (roll -= r.weight) < 0) ?? this.recipes[0];
     const id = this.nextCustomerId++;
+    const drinks = this.params.drinks;
+    const drink = drinks.length && this.rng() < BALANCE.drinkChance ? drinks[Math.floor(this.rng() * drinks.length)] : null;
+    const hurried = this.rng() < this.params.hurriedChance;
+    const patience = this.params.patience * (hurried ? 0.6 : 1) * (drink ? 1.15 : 1);
     this.customers.push({
-      id, seat, order: order.id, phase: 'arriving', t: 0,
-      patience: this.params.patience, patienceMax: this.params.patience,
-      look: Math.floor(this.rng() * 1e6), happy: false,
+      id, seat, order: order.id, drink, servedDish: false, servedDrink: false, hurried, phase: 'arriving', t: 0,
+      patience, patienceMax: patience, look: Math.floor(this.rng() * 1e6), happy: false,
     });
     this.events.push({ type: 'arrived', customer: id });
   }

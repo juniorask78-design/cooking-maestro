@@ -7,6 +7,7 @@ export interface Theme {
   tagline: string;
   /** Emoji (provisoires) des ingrédients, par id et par état. */
   ingredientIcons: Record<string, string>;
+  drinkIcons: Record<string, string>;
   recipeIcons: Record<string, string>;
   plateIcon: string;
   palette: {
@@ -47,6 +48,7 @@ export const THEME: Theme = {
     poulet: '🍗',
     epices: '🌶️',
   },
+  drinkIcons: { limonade: '🍹', the: '🍵' } as Record<string, string>,
   recipeIcons: {
     taco: '🌮',
     guacamole: '🥣',

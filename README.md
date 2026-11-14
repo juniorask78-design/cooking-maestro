@@ -8,7 +8,9 @@
 Tout se joue au toucher (ou à la souris) :
 - Touche un **ingrédient** : il part tout seul sur la planche 🔪, sur le feu 🔥 ou directement sur une assiette.
 - Quand il est prêt, **touche-le** pour le poser sur une assiette. Attention, ce qui cuit brûle si tu l'oublies !
-- Touche une **assiette complète** pour servir le client qui l'a commandée.
+- Touche une **assiette complète** pour servir le client qui l'a commandée, et la **machine** pour remplir les boissons.
+- Touche les **pièces** laissées sur les tables pour les ramasser et libérer la place.
+- Chaque restaurant a 5 niveaux avec un objectif. Réussis-les pour agrandir et découvrir une nouvelle cuisine du monde.
 - Entre deux services, agrandis ton restaurant, achète des améliorations et personnalise ton chef.
 
 ## Développement
