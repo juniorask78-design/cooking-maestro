@@ -18,19 +18,19 @@ export class MenuScene extends Phaser.Scene {
       this.tweens.add({ targets: f, y: f.y + 14, duration: 1800 + i * 200, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
     });
 
-    text(this, cx, 170, THEME.restaurantName, 76, '#ffb347', { fontStyle: 'bold', stroke: '#2b2340', strokeThickness: 10 }).setOrigin(0.5);
-    text(this, cx, 240, THEME.tagline, 24).setOrigin(0.5);
+    text(this, cx, 150, THEME.restaurantName, 76, '#ffb347', { fontStyle: 'bold', stroke: '#2b2340', strokeThickness: 10 }).setOrigin(0.5);
+    text(this, cx, 218, THEME.tagline, 24).setOrigin(0.5);
 
     const chef = drawChef(this, colorOf(THEME.avatarColors, s.look.avatarColor).color, s.look.hat, 2.4);
-    chef.setPosition(cx, 360);
-    this.tweens.add({ targets: chef, y: 352, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+    chef.setPosition(cx, 380);
+    this.tweens.add({ targets: chef, y: 372, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
 
-    panel(this, cx - 230, 420, 460, 54, 0x3d3158);
-    text(this, cx, 447, `Jour ${s.day}  ·  ${STAGES[s.stage].name}  ·  🪙 ${s.coins}`, 22).setOrigin(0.5);
+    panel(this, cx - 230, 448, 460, 54, 0x3d3158);
+    text(this, cx, 475, `Jour ${s.day}  ·  ${STAGES[s.stage].name}  ·  🪙 ${s.coins}`, 22).setOrigin(0.5);
 
-    button(this, cx, 520, s.day === 1 ? 'Ouvrir le food truck' : 'Continuer', () => fadeTo(this, s.day === 1 ? 'Kitchen' : 'Shop'), { w: 320, h: 64, size: 26 });
-    button(this, cx - 130, 600, 'Personnaliser', () => fadeTo(this, 'Customize', { back: 'Menu' }), { w: 240, color: 0x7ee0b0 });
-    button(this, cx + 130, 600, 'Coop en ligne', () => this.toast('La coop en ligne arrive dans une prochaine version !'), { w: 240, color: 0x6ec6ff });
+    button(this, cx, 550, s.day === 1 ? 'Ouvrir le food truck' : 'Continuer', () => fadeTo(this, s.day === 1 ? 'Kitchen' : 'Shop'), { w: 320, h: 64, size: 26 });
+    button(this, cx - 130, 630, 'Personnaliser', () => fadeTo(this, 'Customize', { back: 'Menu' }), { w: 240, color: 0x7ee0b0 });
+    button(this, cx + 130, 630, 'Coop en ligne', () => this.toast('La coop en ligne arrive dans une prochaine version !'), { w: 240, color: 0x6ec6ff });
     const reset = text(this, GAME_WIDTH - 20, GAME_HEIGHT - 16, 'Nouvelle partie', 16, '#b9aed0').setOrigin(1, 1).setInteractive({ useHandCursor: true });
     reset.on('pointerup', async () => {
       if (reset.text !== 'Confirmer ?') { reset.setText('Confirmer ?'); return; }
