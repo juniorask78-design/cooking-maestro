@@ -12,8 +12,8 @@ export interface RoomInfo { code: string; hostId: string; players: { id: string;
 
 export interface Snapshot {
   t: number;
-  players: { id: string; x: number; y: number; faceX: number; faceY: number; holding: unknown }[];
-  stations: { id: string; item: unknown; progress: number }[];
+  slots: KitchenSim['slots'];
+  plates: KitchenSim['plates'];
   customers: KitchenSim['customers'];
   coins: number;
 }
@@ -34,8 +34,8 @@ export interface CoopTransport {
 export function snapshotOf(sim: KitchenSim): Snapshot {
   return {
     t: sim.time,
-    players: [...sim.players.values()].map((p) => ({ id: p.id, x: p.x, y: p.y, faceX: p.faceX, faceY: p.faceY, holding: p.holding })),
-    stations: sim.stations.filter((s) => s.item || s.progress).map((s) => ({ id: s.spec.id, item: s.item, progress: s.progress })),
+    slots: sim.slots,
+    plates: sim.plates,
     customers: sim.customers,
     coins: sim.coins,
   };

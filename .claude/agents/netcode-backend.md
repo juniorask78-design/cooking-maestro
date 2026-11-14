@@ -14,6 +14,6 @@ Base existante :
 Règles :
 - Le jeu solo doit toujours marcher sans réseau ni compte.
 - RLS sur toutes les tables, sans exception. Jamais de clé `service_role` côté client, et aucun secret dans le dépôt.
-- La coop réutilise `KitchenSim` telle quelle : l'hôte applique les actions des invités et diffuse des snapshots. Les invités prédisent leur propre mouvement.
+- La coop réutilise `KitchenSim` telle quelle : l'hôte applique les actions des invités (des touchers) et diffuse des snapshots.
 - Écris des tests pour la sérialisation des actions et des snapshots.
 - Données personnelles : le strict minimum (e-mail pour la connexion, pseudo).

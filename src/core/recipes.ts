@@ -1,4 +1,4 @@
-import { INGREDIENTS, RECIPES, CUISINES, STAGES, type IngredientState, type Part, type RecipeDef } from '../config/content';
+import { RECIPES, CUISINES, STAGES, type IngredientState, type Part, type RecipeDef } from '../config/content';
 
 export const partOf = (id: string, state: IngredientState): Part => `${id}:${state}` as Part;
 
@@ -48,11 +48,3 @@ export function canAddToPlate(parts: readonly string[], part: Part, recipes: Rec
   });
 }
 
-export function canChop(id: string, state: IngredientState): boolean {
-  return state === 'brut' && !!INGREDIENTS[id]?.choppable;
-}
-
-export function canCook(id: string, state: IngredientState): boolean {
-  const def = INGREDIENTS[id];
-  return !!def?.cookFrom && def.cookFrom === state;
-}

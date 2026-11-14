@@ -5,12 +5,20 @@ import { canAddToPlate, dishOf, recipesForStage, ingredientsForStage } from '../
 import { BALANCE } from '../src/config/content';
 
 const fixedRng = () => 0.1;
+const P = 'p1';
 
-function setup() {
+function setup(stage = 0) {
   const save = newSave();
+  save.stage = stage;
   const sim = new KitchenSim(serviceParams(save), fixedRng);
-  const p = sim.addPlayer('p1');
-  return { sim, p };
+  sim.addPlayer(P);
+  const run = (sec: number) => { for (let i = 0; i < sec * 20; i++) sim.tick(0.05); };
+  const tap = {
+    bin: (ingredient: string) => sim.dispatch({ type: 'tapBin', player: P, ingredient }),
+    slot: (slot: string) => sim.dispatch({ type: 'tapSlot', player: P, slot }),
+    plate: (plate: number) => sim.dispatch({ type: 'tapPlate', player: P, plate }),
+  };
+  return { sim, run, tap };
 }
 
 describe('recettes', () => {
@@ -30,75 +38,91 @@ describe('recettes', () => {
   });
 });
 
-describe('simulation', () => {
-  it('prépare et sert un guacamole de bout en bout', () => {
-    const { sim, p } = setup();
-    const st = (type: string, i = 0) => sim.stations.find((s) => s.spec.type === type && s.spec.index === i)!;
-    const crate = (ing: string) => sim.stations.find((s) => s.spec.ingredient === ing)!;
-    const board = st('board');
-    const counter = st('counter', 3);
+describe('service au toucher', () => {
+  it('prépare et sert un taco uniquement avec des touchers', () => {
+    const { sim, run, tap } = setup();
+    tap.bin('tortilla'); // directement sur une assiette
+    expect(sim.plates[0].parts).toEqual(['tortilla:brut']);
+    tap.bin('boeuf'); // part sur un feu
+    tap.bin('tomate'); // part sur la planche
+    expect(sim.slot('feu-0')!.item).toMatchObject({ id: 'boeuf', state: 'brut' });
+    expect(sim.slot('planche-0')!.item).toMatchObject({ id: 'tomate' });
+    run(BALANCE.cookSeconds + 0.2);
+    tap.slot('feu-0');
+    tap.slot('planche-0');
+    expect(sim.dishOn(0)?.id).toBe('taco');
 
-    // Avocat : caisse -> planche -> découpe
-    sim.interact(p, crate('avocat'));
-    sim.interact(p, board);
-    // On place le joueur à côté de la planche pour couper.
-    p.x = (board.spec.tx - 1) * 64 + 32; p.y = board.spec.ty * 64 + 32 + 64;
-    for (let i = 0; i < 30; i++) sim.tick(0.1);
-    expect(board.item).toMatchObject({ id: 'avocat', state: 'coupe' });
-    sim.interact(p, board);
-    sim.interact(p, counter);
-
-    sim.interact(p, crate('tomate'));
-    sim.interact(p, board);
-    for (let i = 0; i < 30; i++) sim.tick(0.1);
-    // Assiette, puis on ramasse la tomate et l'avocat dedans.
-    sim.interact(p, st('plates'));
-    sim.interact(p, board);
-    sim.interact(p, counter);
-    expect(p.holding).toMatchObject({ kind: 'plate' });
-    expect(dishOf((p.holding as { parts: string[] }).parts, sim.recipes)?.id).toBe('guacamole');
-
-    // Un client commande un guacamole.
-    while (!sim.customers.length) sim.tick(0.1);
     const c = sim.customers[0];
-    c.order = 'guacamole';
-    while (c.phase !== 'waiting') sim.tick(0.1);
-    sim.interact(p, sim.station(c.tableId)!);
+    c.order = 'taco';
+    while (c.phase !== 'waiting') run(0.1);
+    tap.plate(0);
     expect(c.phase).toBe('eating');
-    expect(sim.coins).toBeGreaterThanOrEqual(12);
+    expect(sim.coins).toBeGreaterThanOrEqual(15);
+    expect(sim.plates[0].parts).toEqual([]);
   });
 
-  it('le bœuf brûle si on l’oublie', () => {
-    const { sim, p } = setup();
-    const stove = sim.stations.find((s) => s.spec.type === 'stove')!;
-    sim.interact(p, sim.stations.find((s) => s.spec.ingredient === 'boeuf')!);
-    sim.interact(p, stove);
-    for (let i = 0; i < (BALANCE.cookSeconds + BALANCE.burnSeconds + 1) * 10; i++) sim.tick(0.1);
-    expect(stove.item).toMatchObject({ state: 'brule' });
+  it('un ingrédient pas encore prêt reste sur son appareil', () => {
+    const { sim, tap } = setup();
+    tap.bin('avocat');
+    tap.slot('planche-0');
+    expect(sim.slot('planche-0')!.item).not.toBeNull();
+    expect(sim.drainEvents().some((e) => e.type === 'nope')).toBe(true);
   });
 
-  it('les caisses des cuisines non débloquées sont verrouillées', () => {
-    const { sim } = setup();
-    expect(sim.stations.find((s) => s.spec.ingredient === 'riz')!.locked).toBe(true);
+  it('les ingrédients complètent l’assiette déjà commencée', () => {
+    const { sim, run, tap } = setup();
+    tap.bin('avocat');
+    run(BALANCE.chopSeconds + 0.1);
+    tap.slot('planche-0');
+    tap.bin('tortilla'); // ne va pas avec l'avocat : nouvelle assiette
+    expect(sim.plates[0].parts).toEqual(['avocat:coupe']);
+    expect(sim.plates[1].parts).toEqual(['tortilla:brut']);
+  });
+
+  it('l’assiette sélectionnée est prioritaire', () => {
+    const { sim, run, tap } = setup();
+    tap.bin('tortilla');
+    tap.bin('tortilla');
+    tap.plate(1); // sélection
+    tap.bin('tomate');
+    run(BALANCE.chopSeconds + 0.1);
+    tap.slot('planche-0');
+    expect(sim.plates[1].parts).toContain('tomate:coupe');
+  });
+
+  it('le bœuf brûle si on l’oublie, et on le jette d’un toucher', () => {
+    const { sim, run, tap } = setup();
+    tap.bin('boeuf');
+    run(BALANCE.cookSeconds + BALANCE.burnSeconds + 0.5);
+    expect(sim.slot('feu-0')!.item).toMatchObject({ state: 'brule' });
+    tap.slot('feu-0');
+    expect(sim.slot('feu-0')!.item).toBeNull();
+  });
+
+  it('les feux pleins refusent un nouvel ingrédient', () => {
+    const { sim, tap } = setup();
+    tap.bin('boeuf'); tap.bin('boeuf'); tap.bin('boeuf');
+    expect(sim.slots.filter((s) => s.kind === 'feu' && s.item).length).toBe(2);
+    expect(sim.drainEvents().some((e) => e.type === 'nope')).toBe(true);
   });
 
   it('le service se termine', () => {
-    const { sim } = setup();
-    for (let i = 0; i < (BALANCE.serviceSeconds + 40) * 10 && !sim.ended; i++) sim.tick(0.1);
+    const { sim, run } = setup();
+    run(BALANCE.serviceSeconds + 40);
     expect(sim.ended).toBe(true);
   });
 });
 
 describe('progression', () => {
   it('étoiles et agrandissement', () => {
-    expect(starsFor(0, 55)).toBe(0);
-    expect(starsFor(55, 55)).toBe(1);
-    expect(starsFor(200, 55)).toBe(3);
+    expect(starsFor(0, 90)).toBe(0);
+    expect(starsFor(90, 90)).toBe(1);
+    expect(starsFor(200, 90)).toBe(3);
     const save = newSave();
-    applyServiceResult(save, { coins: 150, served: 8, left: 0, stars: 3 });
+    applyServiceResult(save, { coins: 250, served: 14, left: 0, stars: 3 });
     expect(save.day).toBe(2);
     expect(buyStage(save)).toBe(true);
     expect(save.stage).toBe(1);
-    expect(save.coins).toBe(10);
+    expect(save.coins).toBe(30);
   });
 });

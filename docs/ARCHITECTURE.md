@@ -6,9 +6,8 @@
 src/
   config/      contenu et équilibrage (content.ts) + habillage du thème (theme.ts)
   core/        logique pure, testable sans navigateur
-    grid.ts      plan du restaurant, chemins (BFS)
     recipes.ts   règles des recettes et des cuisines
-    sim.ts       simulation d'un service : dispatch(action) + tick(dt)
+    sim.ts       simulation d'un service au toucher : dispatch(action) + tick(dt)
     progress.ts  sauvegarde, améliorations, étoiles, agrandissements
     save.ts      SaveService : local (localStorage) ou cloud (Supabase)
   net/
@@ -25,9 +24,9 @@ tests/         tests Vitest de la logique
 
 Modèle « l'hôte fait foi » :
 1. L'hôte crée une salle (code à 4 lettres) sur un canal **Supabase Realtime**.
-2. Chaque invité envoie ses `Action` (`input`, `interactAt`, `moveTo`…) sur le canal.
+2. Chaque invité envoie ses `Action` (`tapBin`, `tapSlot`, `tapPlate`, `clearPlate`) sur le canal. Ce sont de simples touchers : peu de données, et aucune prédiction de mouvement à gérer.
 3. L'hôte applique toutes les actions à sa `KitchenSim`, et diffuse un `Snapshot` environ 10 fois par seconde (`snapshotOf`).
-4. Les invités affichent le snapshot, avec une interpolation des positions. Leur propre déplacement est prédit localement pour rester fluide.
+4. Les invités affichent le snapshot et jouent tout de suite l'animation de leur toucher (retour immédiat), corrigée au snapshot suivant si besoin.
 5. Si l'hôte quitte, la partie se termine proprement et chacun garde ses gains (la v1 n'a pas de migration d'hôte).
 
 Pourquoi ce choix : ce modèle est simple, on n'a pas de serveur de jeu à héberger, et Supabase est gratuit pour un projet perso. Si on a besoin de plus de robustesse, on pourra passer à un serveur autoritaire (Colyseus) en réutilisant `KitchenSim` côté serveur.
@@ -41,7 +40,7 @@ Pourquoi ce choix : ce modèle est simple, on n'a pas de serveur de jeu à hébe
 
 ## Mobile
 
-- Le canvas s'adapte (`Scale.FIT`) et tout se joue au toucher.
+- Le canvas fait 960 × 640 (paysage), s'adapte à l'écran (`Scale.FIT`) et tout se joue au toucher, avec de grandes zones à toucher.
 - Étapes suivantes : manifeste PWA et écran en paysage, puis Capacitor pour Android et iOS.
 
 ## Déploiement

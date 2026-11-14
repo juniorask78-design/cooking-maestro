@@ -5,9 +5,10 @@
 ▶️ **Jouer en ligne : https://juniorask78-design.github.io/cooking-maestro/**
 
 ## Comment jouer
-- **Toucher ou cliquer** une station pour y aller et l'utiliser, ou toucher le sol pour te déplacer.
-- **Clavier** : flèches, ZQSD ou WASD pour bouger, Espace ou E pour interagir, R pour le livre de recettes.
-- Prends les ingrédients, coupe-les sur la planche (reste à côté), cuis-les à la poêle (sans les laisser brûler), dresse l'assiette, puis sers la bonne table.
+Tout se joue au toucher (ou à la souris) :
+- Touche un **ingrédient** : il part tout seul sur la planche 🔪, sur le feu 🔥 ou directement sur une assiette.
+- Quand il est prêt, **touche-le** pour le poser sur une assiette. Attention, ce qui cuit brûle si tu l'oublies !
+- Touche une **assiette complète** pour servir le client qui l'a commandée.
 - Entre deux services, agrandis ton restaurant, achète des améliorations et personnalise ton chef.
 
 ## Développement

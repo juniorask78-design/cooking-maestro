@@ -9,7 +9,7 @@ Architecture à respecter (voir `docs/ARCHITECTURE.md`) :
 - La logique de jeu est pure et vit dans `src/core/` : `KitchenSim` reçoit des actions par `dispatch()` et avance avec `tick(dt)`. Elle ne connaît pas Phaser.
 - Les scènes (`src/scenes/`) affichent l'état et envoient des actions. Elles ne modifient jamais l'état de jeu directement. C'est indispensable pour la coop en ligne.
 - Le contenu et l'équilibrage sont dans `src/config/content.ts`, l'habillage dans `src/config/theme.ts`. Pas de chiffres magiques dans les scènes.
-- Chaque contrôle doit marcher au clavier et au toucher (mobile plus tard).
+- Tout se joue au toucher : on ne déplace jamais le chef. Une action = un toucher sur un bac, un appareil ou une assiette. Les zones à toucher font au moins 80 px dans le canvas de 960 × 640.
 
 Méthode :
 1. Écris ou adapte d'abord un test dans `tests/` pour la règle de jeu.

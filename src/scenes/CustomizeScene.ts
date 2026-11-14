@@ -19,15 +19,15 @@ export class CustomizeScene extends Phaser.Scene {
     text(this, cx, 40, 'Personnalisation', 38, '#ffb347', { fontStyle: 'bold' }).setOrigin(0.5);
 
     // Aperçu
-    panel(this, 40, 100, 300, 480, 0xfff6e6);
+    panel(this, 40, 90, 300, 440, 0xfff6e6);
     const floor = colorOf(THEME.floorColors, look.floor);
     const wall = colorOf(THEME.wallColors, look.wall);
     const g = this.add.graphics();
     g.fillStyle(wall.color, 1).fillRoundedRect(70, 130, 240, 90, { tl: 14, tr: 14, bl: 0, br: 0 });
     for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) g.fillStyle((x + y) % 2 ? floor.a : floor.b, 1).fillRect(70 + x * 60, 220 + y * 60, 60, 60);
     const chef = drawChef(this, colorOf(THEME.avatarColors, look.avatarColor).color, look.hat, 2.2);
-    chef.setPosition(190, 340);
-    text(this, 190, 520, look.playerName, 24, '#2b2340', { fontStyle: 'bold' }).setOrigin(0.5);
+    chef.setPosition(190, 320);
+    text(this, 190, 490, look.playerName, 24, '#2b2340', { fontStyle: 'bold' }).setOrigin(0.5);
 
     const row = (y: number, title: string, key: LookKey, items: { id: string; name: string; color?: number; a?: number }[]) => {
       text(this, 380, y, title, 22, '#fff6e6', { fontStyle: 'bold' });
@@ -44,16 +44,16 @@ export class CustomizeScene extends Phaser.Scene {
         z.on('pointerup', () => { look[key] = it.id; sfx.pickup(); Session.persist(); this.scene.restart({ back: this.back }); });
       });
     };
-    row(100, 'Couleur de la veste', 'avatarColor', THEME.avatarColors);
-    row(220, 'Chapeau', 'hat', THEME.hats);
-    row(340, 'Sol du restaurant', 'floor', THEME.floorColors);
-    row(460, 'Murs', 'wall', THEME.wallColors);
+    row(80, 'Couleur de la veste', 'avatarColor', THEME.avatarColors);
+    row(195, 'Chapeau', 'hat', THEME.hats);
+    row(310, 'Sol du restaurant', 'floor', THEME.floorColors);
+    row(425, 'Murs', 'wall', THEME.wallColors);
 
-    const name = button(this, 190, 620, 'Changer de nom', () => {
+    const name = button(this, 190, 590, 'Changer de nom', () => {
       const n = window.prompt('Nom du chef ?', look.playerName);
       if (n && n.trim()) { look.playerName = n.trim().slice(0, 16); Session.persist(); this.scene.restart({ back: this.back }); }
     }, { w: 240, color: 0x6ec6ff, size: 20 });
     name.setDepth(1);
-    button(this, 700, 640, 'Terminé', () => fadeTo(this, this.back), { w: 240 });
+    button(this, 700, 590, 'Terminé', () => fadeTo(this, this.back), { w: 240 });
   }
 }

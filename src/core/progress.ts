@@ -72,10 +72,11 @@ export interface ServiceParams {
   chopSeconds: number;
   cookSeconds: number;
   burnSeconds: number;
-  playerSpeed: number;
   goal: number;
-  tables: number;
+  seats: number;
   stoves: number;
+  boards: number;
+  plates: number;
 }
 
 export function serviceParams(save: SaveData): ServiceParams {
@@ -84,15 +85,16 @@ export function serviceParams(save: SaveData): ServiceParams {
   return {
     day: save.day,
     stage: save.stage,
-    spawnInterval: Math.max(BALANCE.spawnIntervalMin, BALANCE.spawnIntervalStart + BALANCE.spawnIntervalPerDay * d) * (stage.tables >= 5 ? 0.85 : 1),
+    spawnInterval: Math.max(BALANCE.spawnIntervalMin, BALANCE.spawnIntervalStart + BALANCE.spawnIntervalPerDay * d) * (1 - 0.06 * save.stage),
     patience: Math.max(BALANCE.patienceMin, BALANCE.patienceStart + BALANCE.patiencePerDay * d) * (1 + 0.2 * upgradeLevel(save, 'deco')),
-    chopSeconds: BALANCE.chopSeconds * (upgradeLevel(save, 'couteau') ? 0.65 : 1),
+    chopSeconds: BALANCE.chopSeconds * (upgradeLevel(save, 'couteau') ? 0.6 : 1),
     cookSeconds: BALANCE.cookSeconds,
-    burnSeconds: BALANCE.burnSeconds * (upgradeLevel(save, 'antiadhesive') ? 1.8 : 1),
-    playerSpeed: BALANCE.playerSpeed * (upgradeLevel(save, 'chaussures') ? 1.15 : 1),
+    burnSeconds: BALANCE.burnSeconds * (upgradeLevel(save, 'antiadhesive') ? 2 : 1),
     goal: Math.round(BALANCE.goalBase + BALANCE.goalPerDay * d),
-    tables: stage.tables,
+    seats: stage.seats,
     stoves: stage.stoves,
+    boards: BALANCE.boards + upgradeLevel(save, 'planche'),
+    plates: BALANCE.plates + upgradeLevel(save, 'assiette'),
   };
 }
 

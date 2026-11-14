@@ -9,6 +9,7 @@ Jeu de gestion de restaurant en français, calme mais exigeant, sur le thème «
 
 ## Règles du projet
 - Tout ce que voit le joueur est en français, et les commentaires de code aussi.
+- Tout se joue au toucher, sans déplacer le chef (choix d'Ange : esprit gestion de restaurant mobile, pas de déplacement libre).
 - La logique de jeu (`src/core/`) est pure et sans Phaser. Les scènes affichent l'état et envoient des actions (indispensable pour la coop).
 - Le contenu et l'équilibrage vont dans `src/config/content.ts`, l'habillage dans `src/config/theme.ts`.
 - On s'inspire du genre, sans copier un jeu existant (pas de noms, de personnages, de niveaux ni d'assets repris).
